@@ -1,0 +1,14 @@
+{
+  "key": "lovelace_resources",
+  "version": 1,
+  "minor_version": 1,
+  "data": {
+    "items": [
+      {
+        "id": "apexcharts-card",
+        "type": "module",
+        "url": "https://cdn.jsdelivr.net/npm/apexcharts-card@2.0.2/dist/apexcharts-card.min.js"
+      }
+    ]
+  }
+}

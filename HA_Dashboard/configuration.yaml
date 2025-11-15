@@ -1,9 +1,19 @@
 # Loads default set of integrations. Do not remove.
-#default_config:
+default_config:
 
 # Load frontend themes from the themes folder
 frontend:
   themes: !include_dir_merge_named themes
+
+lovelace:
+  mode: storage
+  dashboards:
+    nucleares-dashboard:
+      mode: yaml
+      title: Nucleares
+      icon: mdi:atom
+      show_in_sidebar: true
+      filename: dashboard.yaml
 
 automation: !include automations.yaml
 script: !include scripts.yaml
@@ -11,66 +21,91 @@ scene: !include scenes.yaml
 
 history:
 
+recorder:
+  exclude:
+    entities:
+      - sensor.ws
+      - sensor.valve_panel_json_1
+      - sensor.valve_panel_json_2
+      - sensor.weather_forecast_json
+      - sensor.installed_loops_json
+
 homeassistant:
   auth_providers:
     - type: trusted_networks
       trusted_networks:
         - 127.0.0.1
       trusted_users:
-        127.0.0.1: ee74ecd094044cf5b6db0ad0fab66e7e
+        127.0.0.1: !secret nucleares_trusted_user_id
       allow_bypass_login: true
     - type: homeassistant
 
 rest_command:
   nucleares_webserver_set:
-    url: http://10.0.6.10:8785/?variable={{var}}&value={{val}}
+    url: !secret nucleares_backend_commands_url
     method: POST
+    headers:
+      content-type: application/json
+      X-Command-Token: !secret nucleares_command_token
+    payload: >
+      {{ {
+        "purpose": ("HA set " ~ var)[:200],
+        "tasks": [
+          {
+            "operation": "set",
+            "variable": var,
+            "value": val
+          }
+        ],
+        "metadata": {
+          "source": "home_assistant",
+          "requested_at": now().isoformat(),
+          "context_id": context.id if context is defined else None
+        }
+      } | tojson }}
 
 sensor:
   - platform: rest
     name: ws
-    resource: http://10.0.6.10:8785/?variable=WEBSERVER_BATCH_GET&value=!WEBSERVER*
+    resource: !secret nucleares_backend_state_url
     method: GET
     scan_interval: 2
-    value_template: "Ok"
+    value_template: "{{ value_json.last_updated | default('Unavailable') }}"
     json_attributes:
-      - values
+      - data
+      - pagination
   - platform: rest
     name: INSTALLED_LOOPS_JSON
-    resource: http://10.0.6.10:8785/?variable=INSTALLED_LOOPS_JSON
+    resource: !secret nucleares_installed_loops_url
     method: GET
     scan_interval: 10
-    value_template: "Ok"
+    value_template: "{{ value_json.last_updated | default('Unavailable') }}"
     json_attributes:
-      - Loop_0
-      - Loop_1
-      - Loop_2
+      - data
   - platform: rest
     name: VALVE_PANEL_JSON_1
-    resource: http://10.0.6.10:8785/?variable=VALVE_PANEL_JSON
+    resource: !secret nucleares_valve_panel_url
     method: GET
     scan_interval: 1
-    value_template: "Ok"
+    value_template: "{{ value_json.last_updated | default('Unavailable') }}"
     json_attributes:
-      - valves
-      - pumps
+      - data
   - platform: rest
     name: VALVE_PANEL_JSON_2
-    resource: http://10.0.6.10:8785/?variable=VALVE_PANEL_JSON
+    resource: !secret nucleares_valve_panel_url
     method: GET
     scan_interval: 1
-    value_template: "Ok"
+    value_template: "{{ value_json.last_updated | default('Unavailable') }}"
     json_attributes:
-      - pipes
-      - vessels
+      - data
   - platform: rest
     name: WEATHER_FORECAST_JSON
-    resource: http://10.0.6.10:8785/?variable=WEATHER_FORECAST_JSON
+    resource: !secret nucleares_weather_forecast_url
     method: GET
     scan_interval: 1
-    value_template: "Ok"
+    value_template: "{{ value_json.last_updated | default('Unavailable') }}"
     json_attributes:
-      - forecast
+      - data
 
 
 template: !include template_sensors.yaml
@@ -127,8 +162,8 @@ alexa:
   smart_home:
 
 # Added By Homeway to enable Google Assistant support.
-google_assistant:
-  project_id: homewayio
-  service_account:
-    private_key: "nokey"
-    client_email: "support@homeway.io"
+# google_assistant:
+#   project_id: homewayio
+#   service_account:
+#     private_key: "nokey"
+#     client_email: "support@homeway.io"

@@ -30,7 +30,7 @@
         "name": "Target Core Temp",
         "icon": "mdi:bullseye-arrow",
         "step": 1.0,
-        "unit_of_measurement": "°C",
+        "unit_of_measurement": "degC",
         "mode": "box"
       },
       {
@@ -45,5 +45,4 @@
       }
     ]
   }
-
 }

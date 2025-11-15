@@ -17,12 +17,19 @@
     above: 0
   actions:
   - variables:
-      loop: '{{ states(''input_select.loop'')|string }}'
-      flow_ratio: '{{ (states(''sensor.COOLANT_SEC_CIRCULATION_PUMP''+loop+''SPEED'')
-        | int / 100 * states(''sensor.coolant_sec_circulation_pump''+loop+''capacity'')
-        | int) / (states(''sensor.COOLANT_CORE_CIRCULATION_PUMP''+loop+''SPEED'')
-        | int / 100 * states(''sensor.coolant_core_circulation_pump''+loop+''capacity'')
-        | int) }}'
+      loop: "{{ states('input_select.loop') | string }}"
+      demand_delta: "{{ states('sensor.demand_delta') | float(0) }}"
+      delta_sign: "{{ 1 if (states('sensor.demand_delta') | float(0)) > 0 else (-1 if (states('sensor.demand_delta') | float(0)) < 0 else 0) }}"
+      flow_ratio: >-
+        {% set sec_speed = states('sensor.coolant_sec_circulation_pump' ~ loop ~ 'speed') | float(0) %}
+        {% set sec_capacity = states('sensor.coolant_sec_circulation_pump' ~ loop ~ 'capacity') | float(0) %}
+        {% set pri_speed = states('sensor.coolant_core_circulation_pump' ~ loop ~ 'speed') | float(0) %}
+        {% set pri_capacity = states('sensor.coolant_core_circulation_pump' ~ loop ~ 'capacity') | float(0) %}
+        {% set secondary_flow = (sec_speed / 100) * sec_capacity %}
+        {% set primary_flow = (pri_speed / 100) * pri_capacity %}
+        {% set denominator = primary_flow if primary_flow | abs > 0 else 1 %}
+        {{ (secondary_flow / denominator) | float }}
+      game_speed: "{{ [states('sensor.game_sim_speed') | float(1), 0.1] | max }}"
   - if:
     - condition: or
       conditions:
@@ -42,74 +49,84 @@
         below: 6
       - alias: Sec/Pri Flow Ratio is within bounds
         condition: template
-        value_template: "{{ (states('sensor.demand_delta') | int > 0 and flow_ratio
-          >= 3.0) or \n(states('sensor.demand_delta') | int < 0 and flow_ratio <=
-          4.0) }}"
+        value_template: "{{ (demand_delta > 0 and (flow_ratio | float(0)) >= 3.0)
+          or (demand_delta < 0 and (flow_ratio | float(0)) <= 4.0) }}"
         enabled: true
       then:
       - action: rest_command.nucleares_webserver_set
         data:
           var: COOLANT_CORE_CIRCULATION_PUMP{{loop}}ORDERED_SPEED
-          val: '{{ states(''sensor.coolant_core_circulation_pump''+loop+''speed'')
-            | int +  (states(''sensor.demand_delta'') | int | abs) / (states(''sensor.demand_delta'')
-            | int) }}'
+          val: >-
+            {% set current = states('sensor.coolant_core_circulation_pump' ~ loop ~ 'speed') | float(0) %}
+            {% set updated = current + delta_sign %}
+            {{ [0, [100, updated] | min] | max | round(0) | int }}
         alias: Adjust Primary Pump Speed +/- 1
       - delay:
           hours: 0
           minutes: 0
-          seconds: '{{ 3 / states(''sensor.game_sim_speed'') | int }}'
+          seconds: "{{ [1, ((3 / game_speed) | round(0) | int)] | max }}"
           milliseconds: 0
         alias: Wait for (3 / simspeed) seconds
       - alias: NOTIFICATION
         action: persistent_notification.create
         data:
-          message: 'Demand: {{ states(''sensor.power_demand_mw'') }} <br> Output:
-            {{ states(''sensor.total_power_output_mw'') | float }} <br> Delta = {{
-            states(''sensor.demand_delta'') | round(2) }} <br><br> Loop: {{loop}}
-            ==> PRIMARY PUMP speed adjustment <br> Primary =   {{ states(''sensor.COOLANT_CORE_CIRCULATION_PUMP''+loop+''SPEED'')
-            | int }}% -> {{ states(''sensor.COOLANT_CORE_CIRCULATION_PUMP''+loop+''SPEED'')
-            | int / 100 * states(''sensor.coolant_core_circulation_pump''+loop+''capacity'')
-            | int }} L/m of {{ states(''sensor.coolant_core_circulation_pump''+loop+''capacity'')
-            | int }} L/m <br> Secondary = {{ states(''sensor.COOLANT_SEC_CIRCULATION_PUMP''+loop+''SPEED'')
-            | int }}% -> {{ states(''sensor.COOLANT_SEC_CIRCULATION_PUMP''+loop+''SPEED'')
-            | int / 100 * states(''sensor.coolant_sec_circulation_pump''+loop+''capacity'')
-            | int }} L/m of {{ states(''sensor.coolant_sec_circulation_pump''+loop+''capacity'')
-            | int }} L/m <br> MSCV =      {{ states(''sensor.mscv''+loop+''opening_actual'')
-            }}%     {{ states(''sensor.mscv''+loop+''opening_actual'') | int * 100
-            }} L/m <br> Flow Ratio = {{ flow_ratio | round(3) }} <br> New Primary
-            Pump speed:  {{ max(states(''sensor.coolant_core_circulation_pump''+loop+''speed'')
-            | int + states(''sensor.demand_delta'') | int,6) }}%'
+          message: "Demand: {{ states('sensor.power_demand_mw') }} <br> Output: {{
+            states('sensor.total_power_output_mw') | float(0) }} <br> Delta = {{
+            demand_delta | round(2) }} <br><br> Loop: {{ loop }} ==> PRIMARY PUMP
+            speed adjustment <br> Primary = {{ states('sensor.coolant_core_circulation_pump'
+            ~ loop ~ 'speed') | float(0) }}% -> {{ (states('sensor.coolant_core_circulation_pump'
+            ~ loop ~ 'speed') | float(0) / 100 * states('sensor.coolant_core_circulation_pump'
+            ~ loop ~ 'capacity') | float(0)) | round(1) }} L/m of {{ states('sensor.coolant_core_circulation_pump'
+            ~ loop ~ 'capacity') | float(0) }} L/m <br> Secondary = {{ states('sensor.coolant_sec_circulation_pump'
+            ~ loop ~ 'speed') | float(0) }}% -> {{ (states('sensor.coolant_sec_circulation_pump'
+            ~ loop ~ 'speed') | float(0) / 100 * states('sensor.coolant_sec_circulation_pump'
+            ~ loop ~ 'capacity') | float(0)) | round(1) }} L/m of {{ states('sensor.coolant_sec_circulation_pump'
+            ~ loop ~ 'capacity') | float(0) }} L/m <br> MSCV = {{ states('sensor.mscv'
+            ~ loop ~ 'opening_actual') | float(0) }}% <br> Flow Ratio = {{
+            flow_ratio | float(0) | round(3) }} <br> New Primary Pump speed setpoint:
+            {{ [0, [100, (states('sensor.coolant_core_circulation_pump' ~ loop ~ 'speed')
+            | float(0) + delta_sign)] | min] | max | round(0) | int }}%"
           notification_id: PrimaryPump
         enabled: true
       else:
       - variables:
-          target_mscv: '{{ max(min(states(''sensor.mscv''+loop+''opening_actual'')
-            | int + (states(''sensor.demand_delta'') | int / 6) | int,40),2) }}'
+          target_mscv: >-
+            {% set current = states('sensor.mscv' ~ loop ~ 'opening_actual') | float(0) %}
+            {% set raw_target = current + (demand_delta / 6) %}
+            {{ [2, [40, raw_target] | min] | max | round(1) }}
         alias: target MSCV = current mscv +  (demand_delta / 6)
       - alias: Match Secondary Pump Speed to Target MSCV
         action: rest_command.nucleares_webserver_set
         data:
           var: COOLANT_SEC_CIRCULATION_PUMP{{loop}}ORDERED_SPEED
-          val: '{{ (target_mscv | int * 1000 / states(''sensor.coolant_sec_circulation_pump''+loop+''capacity'')
-            | int) | round(1)  }}'
+          val: >-
+            {% set capacity = states('sensor.coolant_sec_circulation_pump' ~ loop ~ 'capacity') | float(0) %}
+            {% set denom = capacity if capacity | abs > 0 else 1 %}
+            {% set desired = (target_mscv | float(0) * 1000 / denom) %}
+            {{ [0, [100, desired] | min] | max | round(1) }}
       - alias: Match Primary Pump Speed to Target MSCV
         action: rest_command.nucleares_webserver_set
         data:
           var: COOLANT_CORE_CIRCULATION_PUMP{{loop}}ORDERED_SPEED
-          val: '{{ (target_mscv | int * 300 / states(''sensor.coolant_core_circulation_pump''+loop+''capacity'')
-            | int) | round(1)  }}'
+          val: >-
+            {% set capacity = states('sensor.coolant_core_circulation_pump' ~ loop ~ 'capacity') | float(0) %}
+            {% set denom = capacity if capacity | abs > 0 else 1 %}
+            {% set desired = (target_mscv | float(0) * 300 / denom) %}
+            {{ [0, [100, desired] | min] | max | round(1) }}
       - alias: If MSCV not at Target, adjust MSCV +/- 1
         if:
         - condition: template
-          value_template: '{{ states(''sensor.mscv''+loop+''opening_actual'') | int
+          value_template: '{{ states(''sensor.mscv''+loop+''opening_actual'') | float(0)
             != target_mscv }}'
           alias: Is MSCV not at Target?
         then:
         - action: rest_command.nucleares_webserver_set
           data:
             var: MSCV{{loop}}OPENING_ORDERED
-            val: '{{ states(''sensor.mscv''+loop+''opening_actual'') | int +  (states(''sensor.demand_delta'')
-              | int | abs) / (states(''sensor.demand_delta'') | int) }}'
+            val: >-
+              {% set current = states('sensor.mscv' ~ loop ~ 'opening_actual') | float(0) %}
+              {% set updated = current + delta_sign %}
+              {{ [2, [40, updated] | min] | max | round(0) | int }}
           alias: Adjust Main Steam Control Valve +/- 1
       - alias: NOTIFICATION
         action: persistent_notification.create
@@ -117,16 +134,19 @@
           message: "Demand: {{ states('sensor.power_demand_mw') }} <br> Output: {{
             states('sensor.total_power_output_mw') }} <br> Delta = {{ states('sensor.demand_delta')
             | round(2) }} <br><br> Loop: {{loop}} ==> STEAM VALVE adjustment  <br>MSCV
-            = {{ target_mscv }} <br> New Primary = {{\n (target_mscv | int * 300 /
-            states('sensor.coolant_core_circulation_pump'+loop+'capacity') |\nint)
-            | int }} <br> New Secondary = {{ (target_mscv | int * 1000 / states('sensor.coolant_sec_circulation_pump'+loop+'capacity')
-            | int) | int }}<br> Ratio:{{flow_ratio | round(4)}}"
+            = {{ target_mscv }} <br> New Primary = {{
+            ([0, [100, (target_mscv | float(0) * 300 / ([states('sensor.coolant_core_circulation_pump'
+            ~ loop ~ 'capacity') | float(0), 1] | max))] | min] | max) | round(1) }}
+            <br> New Secondary = {{
+            ([0, [100, (target_mscv | float(0) * 1000 / ([states('sensor.coolant_sec_circulation_pump'
+            ~ loop ~ 'capacity') | float(0), 1] | max))] | min] | max) | round(1) }}<br>
+            Ratio: {{ flow_ratio | float(0) | round(4) }}"
           notification_id: SteamValve
         enabled: true
       - delay:
           hours: 0
           minutes: 0
-          seconds: '{{ 10 / states(''sensor.game_sim_speed'') | int }}'
+          seconds: "{{ [1, ((10 / game_speed) | round(0) | int)] | max }}"
           milliseconds: 0
         alias: Wait for (10 / simspeed) seconds
   - delay:
@@ -209,3 +229,54 @@
       entity_id:
       - input_number.timestamp
   mode: single
+- id: '1746405000000'
+  alias: Loop Flow Ratio Guard
+  description: Focuses the active loop and alerts when the secondary/primary flow ratio leaves the safe band.
+  triggers:
+  - trigger: state
+    entity_id:
+    - sensor.loop0_flowratio
+    - sensor.loop1_flowratio
+    - sensor.loop2_flowratio
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 10
+  conditions:
+  - condition: template
+    value_template: >-
+      {% set ratio = trigger.to_state.state | float(0) %}
+      {{ ratio < 3.0 or ratio > 4.0 }}
+  actions:
+  - variables:
+      loop_number: "{{ trigger.entity_id | regex_findall_index('loop(\\d)_flowratio')
+        | default('0') }}"
+      loop_option: "{{ '_' ~ loop_number ~ '_' }}"
+      ratio: "{{ trigger.to_state.state | float(0) }}"
+      direction: "{{ 'below' if ratio < 3 else 'above' }}"
+  - alias: Highlight affected loop on dashboards
+    action: input_select.select_option
+    target:
+      entity_id: input_select.loop
+    data:
+      option: '{{ loop_option }}'
+  - alias: Persist notification
+    action: persistent_notification.create
+    data:
+      title: Loop {{ loop_number }} flow alert
+      message: |-
+        Coolant Loop {{ loop_number }} secondary/primary flow ratio has been {{ direction }} the safe range (3.0 - 4.0) for at least 10 seconds.
+
+        Current ratio: {{ ratio | round(3) }}
+
+        Secondary flow: {{ states('sensor.coolant_sec_circulation_pump_' ~ loop_number ~ '_speed')
+        | float(0) }}% of {{ states('sensor.coolant_sec_circulation_pump_' ~ loop_number ~ '_capacity')
+        | float(0) }} L/m
+
+        Primary flow: {{ states('sensor.coolant_core_circulation_pump_' ~ loop_number ~ '_speed')
+        | float(0) }}% of {{ states('sensor.coolant_core_circulation_pump_' ~ loop_number ~ '_capacity')
+        | float(0) }} L/m
+
+        Confirm pump status and valve positions, then re-run demand following if needed.
+      notification_id: LoopFlowGuard
+  mode: restart

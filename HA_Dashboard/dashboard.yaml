@@ -500,7 +500,7 @@ views:
                   - entity: sensor.steam_turbine_0_bypass_actual
                     name: Bypass
                     yaxis_id: mscv
-                    unit: '%'
+                    unit: "%"
                     color: lightgreen
                     opacity: 0.6
                     stroke_width: 2
@@ -631,7 +631,7 @@ views:
                   - entity: sensor.steam_turbine_1_bypass_actual
                     name: Bypass
                     yaxis_id: mscv
-                    unit: '%'
+                    unit: "%"
                     color: lightgreen
                     opacity: 0.6
                     stroke_width: 2
@@ -762,7 +762,7 @@ views:
                   - entity: sensor.steam_turbine_2_bypass_actual
                     name: Bypass
                     yaxis_id: mscv
-                    unit: '%'
+                    unit: "%"
                     color: lightgreen
                     opacity: 0.6
                     stroke_width: 2
@@ -1033,7 +1033,7 @@ views:
             visibility:
               - condition: state
                 entity: sensor.steam_turbine_0_installed
-                state: 'True'
+                state: "True"
           - type: horizontal-stack
             cards:
               - type: custom:apexcharts-card
@@ -1126,7 +1126,7 @@ views:
             visibility:
               - condition: state
                 entity: sensor.steam_turbine_1_installed
-                state: 'True'
+                state: "True"
           - type: horizontal-stack
             cards:
               - type: custom:apexcharts-card
@@ -1219,7 +1219,7 @@ views:
             visibility:
               - condition: state
                 entity: sensor.steam_turbine_2_installed
-                state: 'True'
+                state: "True"
           - type: horizontal-stack
             cards:
               - type: custom:apexcharts-card
@@ -1264,7 +1264,7 @@ views:
                     name: Condenser Vacuum
                     yaxis_id: flow
                     transform: return x * 100
-                    unit: '%'
+                    unit: "%"
                     curve: stepline
                     color: green
                     stroke_width: 2
