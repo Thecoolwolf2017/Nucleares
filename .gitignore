@@ -1,2 +1,10 @@
-# Ignore reference copies of upstream projects
+# Ignore reference copies of upstream projects and unpublished assets
 _upstream/
+secrets.yaml
+Nucleares Piping and Plumbing Diagram.pdf
+Nucleares Piping and Plumbing Diagram.png
+Nucleares Piping and Plumbing Diagram.svg
+Nucleares_Balance.jpg
+Nucleares_Balance.odg
+Nucleares_Balance.pdf
+Nucleares_Diagram_191.odg
